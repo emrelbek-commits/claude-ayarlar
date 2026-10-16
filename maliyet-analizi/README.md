@@ -7,10 +7,16 @@ Tek kullanıcılı, kendi bilgisayarında çalışır. Veriler `data/maliyet.db`
 
 ## Kurulum ve çalıştırma (Windows)
 
-1. [Python 3.11 veya üstü](https://www.python.org/downloads/) kur. Kurulumda **"Add Python to PATH"** kutusunu işaretle.
-2. Bu klasörü bilgisayarına indir (GitHub'da **Code → Download ZIP**, sonra zip'i aç).
-3. `maliyet-analizi` klasöründeki **`baslat.bat`** dosyasına çift tıkla.
-   İlk açılışta gerekli paketler kurulur (birkaç dakika). Sonra tarayıcıda uygulama açılır.
+1. Bu klasörü bilgisayarına indir (GitHub'da **Code → Download ZIP**, sonra zip'i aç).
+2. `maliyet-analizi` klasöründeki **`baslat.bat`** dosyasına çift tıkla.
+
+`baslat.bat` her şeyi kendisi yapar:
+- Bilgisayarda Python yoksa **Python 3.12'yi kendisi kurar** (önce winget ile, olmazsa python.org'dan indirerek). Yönetici izni gerekmez, sadece senin kullanıcına kurulur.
+- İlk açılışta uygulamanın paketlerini `.venv` klasörüne kurar (birkaç dakika).
+- Sonraki açılışlarda doğrudan uygulamayı tarayıcıda açar.
+
+Windows "Bilinmeyen yayıncı" uyarısı verirse **Ek bilgi → Yine de çalıştır** de. Kurulum yarıda kalırsa
+Python'u [python.org](https://www.python.org/downloads/)'dan elle kur ("Add Python to PATH" kutusunu işaretle) ve `baslat.bat`'ı tekrar çalıştır.
 
 Denemek için örnek dosyalar: `python ornek_veri.py` komutu `ornek/` klasörüne ekran görüntülerindeki formatta 5 Excel üretir.
 
