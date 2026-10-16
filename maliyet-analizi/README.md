@@ -3,16 +3,16 @@
 Açık ocak madencilik hakedişlerinin aylık kâr/zarar analizi. Gelir Master Data'dan okunur; mazot, depo ve personel
 giderleri dağıtım anahtarlarıyla Maden pozlarına, TSF, RC ve Kiralık'a dağıtılır.
 
-Tek kullanıcılı, kendi bilgisayarında çalışır. Veriler `data/maliyet.db` dosyasında tutulur (yedek almak için bu klasörü kopyala).
+Tek kullanıcılı, kendi bilgisayarında çalışır. Veriler **Belgeler\\MaliyetAnalizi** klasöründe tutulur (`maliyet.db` ve yüklenen Excel'lerin arşivi). Yedek almak için bu klasörü kopyala. Uygulamanın yeni sürümünü indirmek verilere dokunmaz.
 
 ## Kurulum ve çalıştırma (Windows)
 
-1. Bu klasörü bilgisayarına indir (GitHub'da **Code → Download ZIP**, sonra zip'i aç).
+1. Zip'i indir, **sağ tıklayıp "Tümünü ayıkla"** de (zip'in içinden doğrudan çalıştırma, kurulum orada çalışmaz).
 2. `maliyet-analizi` klasöründeki **`baslat.bat`** dosyasına çift tıkla.
 
 `baslat.bat` her şeyi kendisi yapar:
 - Bilgisayarda Python yoksa **Python 3.12'yi kendisi kurar** (önce winget ile, olmazsa python.org'dan indirerek). Yönetici izni gerekmez, sadece senin kullanıcına kurulur.
-- İlk açılışta uygulamanın paketlerini `.venv` klasörüne kurar (birkaç dakika).
+- İlk açılışta uygulamanın paketlerini `%LocalAppData%\MaliyetAnalizi\venv` klasörüne kurar (birkaç dakika).
 - Sonraki açılışlarda doğrudan uygulamayı tarayıcıda açar.
 
 Windows "Bilinmeyen yayıncı" uyarısı verirse **Ek bilgi → Yine de çalıştır** de. Kurulum yarıda kalırsa
