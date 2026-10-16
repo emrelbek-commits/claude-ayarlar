@@ -228,9 +228,10 @@ def veri_yukleme():
 def gelir_esleme():
     st.header("Gelir eşleme")
     st.caption("Master Data kalemlerinin hangi kâr merkezine yazılacağı. Yeni kalemler otomatik önerilir; kontrol edip "
-               "'Onaylı' kutusunu işaretle. Maden ek kalemleri (Diğer, Elektrik, Yemek…) yazıldığı gibi, gider almadan gösterilir.")
+               "'Onaylı' kutusunu işaretle. Maden pozları (Maden 1, 2…) ayrı kâr merkezidir; TSF ve RC pozları numaralanır ama "
+               "hesap ailenin toplamında yapılır. Maden ek kalemleri (Diğer, Elektrik, Yemek…) yazıldığı gibi, gider almadan gösterilir.")
     etiket = km_etiketleri()
-    df = pd.read_sql("SELECT aile, kalem_adi, kar_merkezi_id, tip, m3_dahil, onayli FROM gelir_eslesme ORDER BY aile, kalem_adi", conn)
+    df = pd.read_sql("SELECT aile, kisa_ad, kalem_adi, kar_merkezi_id, tip, m3_dahil, onayli FROM gelir_eslesme ORDER BY aile, kalem_adi", conn)
     if df.empty:
         st.info("Henüz Master Data yüklenmedi.")
         return
@@ -240,7 +241,7 @@ def gelir_esleme():
     duzen = st.data_editor(
         df.drop(columns="kar_merkezi_id"), hide_index=True, width="stretch", disabled=["aile", "kalem_adi"],
         column_config={
-            "aile": "Aile", "kalem_adi": "Master Data kalemi",
+            "aile": "Aile", "kisa_ad": "Poz", "kalem_adi": "Master Data kalemi",
             "Kâr merkezi": st.column_config.SelectboxColumn(options=list(etiket.values()), required=True),
             "tip": st.column_config.SelectboxColumn("Tip", options=["poz", "ek", "aile", "kiralik"], required=True),
             "m3_dahil": st.column_config.CheckboxColumn("m³ anahtarına dahil"),
@@ -252,8 +253,9 @@ def gelir_esleme():
         geri = {v: k for k, v in etiket.items()}
         for _, r in duzen.iterrows():
             conn.execute(
-                "UPDATE gelir_eslesme SET kar_merkezi_id=?, tip=?, m3_dahil=?, onayli=? WHERE aile=? AND kalem_adi=?",
-                (geri[r["Kâr merkezi"]], r["tip"], int(r["m3_dahil"]), int(r["onayli"]), r["aile"], r["kalem_adi"]),
+                "UPDATE gelir_eslesme SET kar_merkezi_id=?, tip=?, m3_dahil=?, onayli=?, kisa_ad=? WHERE aile=? AND kalem_adi=?",
+                (geri[r["Kâr merkezi"]], r["tip"], int(r["m3_dahil"]), int(r["onayli"]), r["kisa_ad"] or None,
+                 r["aile"], r["kalem_adi"]),
             )
         conn.commit()
         st.success("Kaydedildi.")
@@ -387,7 +389,7 @@ def anahtarlar():
             st.rerun()
 
     with st.expander("Yeni anahtar tanımla"):
-        st.caption("Ör. 'İş Makinası (delici dahil)': Pitworks, birincil ekipman, KAMYON hariç.")
+        st.caption("Ör. 'Kamyon hariç ekipman': Pitworks, birincil ekipman, hariç tip KAMYON.")
         ad = st.text_input("Anahtar adı")
         tur = st.radio("Tür", ["ekipman", "manuel"], format_func={"ekipman": "Ekipman sayısı (filtreli)", "manuel": "Elle girilen pay"}.get,
                        horizontal=True)
@@ -410,10 +412,24 @@ def anahtarlar():
                              (kod, ad, tur, json.dumps(filtre, ensure_ascii=False) if filtre else None))
                 conn.commit()
                 st.rerun()
-    with st.expander("Ekipman anahtarlarının filtreleri"):
-        for kod, a in tum.items():
-            if a["tur"] == "ekipman":
-                st.write(f"**{a['ad']}**: {json.dumps(a['filtre'], ensure_ascii=False)}")
+    with st.expander("Ekipman anahtarlarının filtrelerini düzenle"):
+        st.caption("Ekipman anahtarı: filtreye uyan her ekipman 1 sayılır ve o ayki çalışma oranlarıyla pozlara dağılır.")
+        ekip_anahtar = {k: a for k, a in tum.items() if a["tur"] == "ekipman"}
+        if ekip_anahtar:
+            kod = st.selectbox("Anahtar", list(ekip_anahtar), format_func=lambda k: ekip_anahtar[k]["ad"])
+            f = ekip_anahtar[kod]["filtre"] or {}
+            tipler = sorted({r[0] for r in conn.execute("SELECT DISTINCT tip FROM ekipman WHERE tip IS NOT NULL UNION SELECT DISTINCT tip FROM mazot WHERE tip IS NOT NULL")} | set(f.get("tipler") or []) | set(f.get("haric_tipler") or []))
+            sirketler = sorted({r[0] for r in conn.execute("SELECT DISTINCT company FROM ekipman WHERE company IS NOT NULL UNION SELECT DISTINCT company FROM mazot WHERE company IS NOT NULL")} | set(f.get("company") or []))
+            yeni = {
+                "company": st.multiselect("Şirket (boş = hepsi)", sirketler, default=f.get("company") or [], key=f"fc_{kod}"),
+                "tipler": st.multiselect("Sadece bu tipler (boş = hepsi)", tipler, default=f.get("tipler") or [], key=f"ft_{kod}"),
+                "haric_tipler": st.multiselect("Hariç tutulacak tipler", tipler, default=f.get("haric_tipler") or [], key=f"fh_{kod}"),
+                "sadece_birincil": st.checkbox("Sadece birincil ekipman", value=bool(f.get("sadece_birincil")), key=f"fb_{kod}"),
+            }
+            if st.button("Filtreyi kaydet"):
+                conn.execute("UPDATE anahtar SET filtre=? WHERE kod=?", (json.dumps(yeni, ensure_ascii=False), kod))
+                conn.commit()
+                st.rerun()
 
 
 def depo_anahtarlari():
@@ -525,7 +541,7 @@ def rapor_sayfasi():
         st.info("Bu dönem için veri yok.")
         return
     para_kol = {c: st.column_config.NumberColumn(format="%,.2f") for c in r.columns if c.endswith("$") or c.endswith("L")}
-    sekme = st.tabs(["Kâr merkezi", "Aile özeti", "Dönem karşılaştırma"])
+    sekme = st.tabs(["Kâr merkezi", "Aile özeti", "Gelir detayı", "Dönem karşılaştırma"])
     with sekme[0]:
         st.dataframe(r, hide_index=True, width="stretch", column_config=para_kol)
         govde = r[~r["Aile"].isin(["TOPLAM", "-"])]
@@ -533,6 +549,10 @@ def rapor_sayfasi():
     with sekme[1]:
         st.dataframe(servis.aile_ozeti(r), hide_index=True, width="stretch", column_config=para_kol)
     with sekme[2]:
+        st.caption("Kalem bazında gelir. TSF ve RC pozları bilgi amaçlıdır; kâr/zarar ailenin toplamında hesaplanır.")
+        st.dataframe(servis.gelir_detayi(conn, donem_id), hide_index=True, width="stretch",
+                     column_config={c: st.column_config.NumberColumn(format="%,.2f") for c in ("Miktar", "Birim fiyat $", "KDV'siz $")})
+    with sekme[3]:
         yillar = [y[0] for y in conn.execute("SELECT DISTINCT yil FROM donem ORDER BY yil DESC")]
         c1, c2 = st.columns(2)
         yil = c1.selectbox("Yıl", [None] + yillar, format_func=lambda y: "Tüm yıllar" if y is None else str(y))

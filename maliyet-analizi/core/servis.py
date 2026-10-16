@@ -35,17 +35,28 @@ def ayni_dosya_yuklu_mu(conn, donem_id, kaynak, hash_) -> bool:
 
 # ---------------------------------------------------------------- gelir
 
-def _gelir_eslesme_oner(conn, aile: str, kalem: str, kdv: str | None) -> tuple[int, str, int]:
-    """Yeni bir Master Data kalemi için kâr merkezi önerisi."""
+def _sonraki_kisa_ad(conn, aile: str) -> str:
+    """Pozlara dosyadaki sırayla Maden 1, Maden 2 … / TSF 1 … / RC 1 … adı verir."""
+    n = conn.execute("SELECT COUNT(*) FROM gelir_eslesme WHERE aile=? AND kisa_ad IS NOT NULL", (aile,)).fetchone()[0]
+    return f"{aile.capitalize() if aile == 'MADEN' else aile} {n + 1}"
+
+
+def _gelir_eslesme_oner(conn, aile: str, kalem: str, kdv: str | None) -> tuple[int, str, int, str | None]:
+    """Yeni bir Master Data kalemi için kâr merkezi önerisi: (kâr merkezi, tip, m³ dahil, kısa ad)."""
     kalem_n = kalem.upper().replace("İ", "I")
+    poz_mu = (kdv or "").upper() == "Y"
     if "KIRALIK" in kalem_n:
-        return dbm.kar_merkezi_bul_veya_olustur(conn, "Kiralık", "KİRALIK", 1, 80), "kiralik", 0
+        return dbm.kar_merkezi_bul_veya_olustur(conn, "Kiralık", "KİRALIK", 1, 80), "kiralik", 0, None
     if aile == "MADEN":
-        if (kdv or "").upper() == "Y":
-            return dbm.kar_merkezi_bul_veya_olustur(conn, kalem, "MADEN", 1, 10), "poz", 1
+        if poz_mu:
+            kisa = _sonraki_kisa_ad(conn, aile)
+            km = dbm.kar_merkezi_bul_veya_olustur(conn, kisa, "MADEN", 1, int(kisa.split()[-1]), aciklama=kalem)
+            return km, "poz", 1, kisa
         # Ek kalemler yazıldığı gibi, Maden altında, gider almadan gösterilir.
-        return dbm.kar_merkezi_bul_veya_olustur(conn, kalem, "MADEN", 0, 40), "ek", 0
-    return dbm.kar_merkezi_bul_veya_olustur(conn, aile, aile, 1, 60), "aile", 1 if aile == "TSF" else 0
+        return dbm.kar_merkezi_bul_veya_olustur(conn, kalem, "MADEN", 0, 40), "ek", 0, None
+    # TSF ve RC: pozlar numaralanır ama gelir/gider ailenin toplamında tutulur.
+    km = dbm.kar_merkezi_bul_veya_olustur(conn, aile, aile, 1, 60)
+    return km, "aile", 1 if aile == "TSF" else 0, _sonraki_kisa_ad(conn, aile) if poz_mu else None
 
 
 def gelir_kaydet(conn, donem_id, df: pd.DataFrame, dosya_adi, hash_) -> int:
@@ -55,10 +66,10 @@ def gelir_kaydet(conn, donem_id, df: pd.DataFrame, dosya_adi, hash_) -> int:
             "SELECT 1 FROM gelir_eslesme WHERE aile=? AND kalem_adi=?", (r.aile, r.kalem)
         ).fetchone()
         if not var:
-            km, tip, m3 = _gelir_eslesme_oner(conn, r.aile, r.kalem, r.kdv)
+            km, tip, m3, kisa = _gelir_eslesme_oner(conn, r.aile, r.kalem, r.kdv)
             conn.execute(
-                "INSERT INTO gelir_eslesme (aile, kalem_adi, kar_merkezi_id, tip, m3_dahil) VALUES (?, ?, ?, ?, ?)",
-                (r.aile, r.kalem, km, tip, m3),
+                "INSERT INTO gelir_eslesme (aile, kalem_adi, kar_merkezi_id, tip, m3_dahil, kisa_ad) VALUES (?, ?, ?, ?, ?, ?)",
+                (r.aile, r.kalem, km, tip, m3, kisa),
             )
         conn.execute(
             "INSERT INTO gelir (donem_id, aile, kalem_adi, kdv, miktar, birim_fiyat, tutar) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -396,7 +407,7 @@ def rapor(conn, donem_id, veri: DonemVerisi | None = None, sonuc: Sonuc | None =
             continue
         mazot, depo, pers = gid.get("mazot", 0.0), gid.get("depo", 0.0), gid.get("personel", 0.0)
         satirlar.append({
-            "Aile": r.aile, "Kâr merkezi": r.ad, "Gelir $": g, "Mazot L": sonuc.mazot_litre.get(r.id, 0.0),
+            "Aile": r.aile, "Kâr merkezi": r.ad, "Açıklama": r.aciklama or "", "Gelir $": g, "Mazot L": sonuc.mazot_litre.get(r.id, 0.0),
             "Mazot $": mazot, "Depo $": depo, "Personel $": pers, "Toplam gider $": mazot + depo + pers,
             "Sonuç $": g - (mazot + depo + pers),
         })
@@ -410,12 +421,26 @@ def rapor(conn, donem_id, veri: DonemVerisi | None = None, sonuc: Sonuc | None =
             "Mazot $": dm["mazot"], "Depo $": dm["depo"], "Personel $": dm["personel"],
             "Toplam gider $": sum(dm.values()), "Sonuç $": -sum(dm.values()),
         })
-    df = pd.DataFrame(satirlar).fillna(0.0)
+    df = pd.DataFrame(satirlar)
     if df.empty:
         return df
+    df["Açıklama"] = df["Açıklama"].fillna("")
+    df = df.fillna(0.0)
     toplam = df.select_dtypes("number").sum()
-    df = pd.concat([df, pd.DataFrame([{"Aile": "TOPLAM", "Kâr merkezi": "", **toplam.to_dict()}])], ignore_index=True)
+    df = pd.concat([df, pd.DataFrame([{"Aile": "TOPLAM", "Kâr merkezi": "", "Açıklama": "", **toplam.to_dict()}])],
+                   ignore_index=True)
     return df
+
+
+def gelir_detayi(conn, donem_id) -> pd.DataFrame:
+    """Kalem bazında gelir (TSF/RC pozları bilgi amaçlı; hesap ailenin toplamında)."""
+    return pd.read_sql(
+        "SELECT g.aile AS Aile, COALESCE(e.kisa_ad, '') AS Poz, g.kalem_adi AS Kalem, k.ad AS \"Kâr merkezi\", "
+        "g.miktar AS Miktar, g.birim_fiyat AS \"Birim fiyat $\", g.tutar AS \"KDV'siz $\" "
+        "FROM gelir g LEFT JOIN gelir_eslesme e ON e.aile=g.aile AND e.kalem_adi=g.kalem_adi "
+        "LEFT JOIN kar_merkezi k ON k.id=e.kar_merkezi_id WHERE g.donem_id=? ORDER BY g.id",
+        conn, params=(donem_id,),
+    )
 
 
 def aile_ozeti(df: pd.DataFrame) -> pd.DataFrame:

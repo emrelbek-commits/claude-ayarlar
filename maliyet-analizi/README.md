@@ -45,7 +45,7 @@ Denemek için örnek dosyalar: `python ornek_veri.py` komutu `ornek/` klasörün
 | Depo | Garaj no ekipman koduysa ekipmanın çalışma oranlarıyla; değilse Gider Yeri için seçilen anahtarla. UZS ÷ UZS/USD |
 | Personel | Görev grubunun toplam maaşı (UZS ÷ UZS/USD) × seçilen anahtarın payı |
 | Kamyon anahtarı | Pitworks'teki her KAMYON 1 sayılır, çalışma oranlarıyla pozlara dağılır |
-| Ekipman anahtarı | Pitworks'te birincil ekipman = Evet olanlar, aynı yöntem |
+| Ekipman (delici dahil / hariç) | Pitworks'te birincil ekipman = Evet olanlar, aynı yöntem. "Delici hariç" DELICI ve RC tiplerini saymaz |
 | m³ anahtarı | Master Data miktarları (Maden pozları + TSF; Gelir Eşleme'de "m³ anahtarına dahil") |
 | Motorin anahtarı | Pozlara dağıtılan mazot litresi |
 | Patlayıcı | Her ay elle girilen yüzdeler |

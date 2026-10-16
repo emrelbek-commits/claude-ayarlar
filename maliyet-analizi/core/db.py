@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS kar_merkezi (
     gider_alir INTEGER NOT NULL DEFAULT 1,
     sira INTEGER NOT NULL DEFAULT 100,
     aktif INTEGER NOT NULL DEFAULT 1,
+    aciklama TEXT,                  -- ör. Maden 1 için Master Data'daki iş tanımı
     UNIQUE (aile, ad)
 );
 
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS gelir_eslesme (
     tip TEXT NOT NULL,              -- poz / kiralik / ek / aile
     m3_dahil INTEGER NOT NULL DEFAULT 0,
     onayli INTEGER NOT NULL DEFAULT 0,   -- otomatik önerildiyse 0, kullanıcı onaylayınca 1
+    kisa_ad TEXT,                        -- Maden 1, TSF 2, RC 3 gibi
     PRIMARY KEY (aile, kalem_adi)
 );
 
@@ -146,7 +148,9 @@ VARSAYILAN_KAR_MERKEZLERI = [
 VARSAYILAN_ANAHTARLAR = [
     ("MOTORIN", "Motorin", "motorin", None),
     ("KAMYON", "Kamyon", "ekipman", {"company": ["Pitworks"], "tipler": ["KAMYON"], "sadece_birincil": False}),
-    ("EKIPMAN", "Ekipman", "ekipman", {"company": ["Pitworks"], "tipler": [], "sadece_birincil": True}),
+    ("EKIPMAN", "Ekipman (delici dahil)", "ekipman", {"company": ["Pitworks"], "tipler": [], "sadece_birincil": True}),
+    ("EKIPMAN_DH", "Ekipman (delici hariç)", "ekipman",
+     {"company": ["Pitworks"], "tipler": [], "haric_tipler": ["DELICI", "RC"], "sadece_birincil": True}),
     ("M3", "m³", "m3", None),
     ("PATLAYICI", "Patlayıcı", "manuel", None),
     ("PERSONEL", "Personel", "personel", None),
@@ -169,12 +173,20 @@ def kur(conn: sqlite3.Connection) -> None:
             "INSERT INTO kar_merkezi (ad, aile, gider_alir, sira) VALUES (?, ?, ?, ?)",
             VARSAYILAN_KAR_MERKEZLERI,
         )
-    if conn.execute("SELECT COUNT(*) FROM anahtar").fetchone()[0] == 0:
-        conn.executemany(
-            "INSERT INTO anahtar (kod, ad, tur, filtre, sistem) VALUES (?, ?, ?, ?, 1)",
-            [(k, a, t, json.dumps(f, ensure_ascii=False) if f else None) for k, a, t, f in VARSAYILAN_ANAHTARLAR],
-        )
+    _sutun_ekle(conn, "kar_merkezi", "aciklama", "TEXT")
+    _sutun_ekle(conn, "gelir_eslesme", "kisa_ad", "TEXT")
+    conn.execute("UPDATE anahtar SET ad='Ekipman (delici dahil)' WHERE kod='EKIPMAN' AND ad='Ekipman'")
+    conn.executemany(
+        "INSERT OR IGNORE INTO anahtar (kod, ad, tur, filtre, sistem) VALUES (?, ?, ?, ?, 1)",
+        [(k, a, t, json.dumps(f, ensure_ascii=False) if f else None) for k, a, t, f in VARSAYILAN_ANAHTARLAR],
+    )
     conn.commit()
+
+
+def _sutun_ekle(conn, tablo, sutun, tur):
+    """Eski veritabanlarına yeni sütun ekler (veri kaybı olmadan)."""
+    if sutun not in {r[1] for r in conn.execute(f"PRAGMA table_info({tablo})")}:
+        conn.execute(f"ALTER TABLE {tablo} ADD COLUMN {sutun} {tur}")
 
 
 def donem_getir_veya_olustur(conn, yil: int, ay: int) -> int:
@@ -195,11 +207,12 @@ def onceki_donem(conn, donem_id: int):
     return satir["id"] if satir else None
 
 
-def kar_merkezi_bul_veya_olustur(conn, ad: str, aile: str, gider_alir: int = 1, sira: int = 10) -> int:
+def kar_merkezi_bul_veya_olustur(conn, ad: str, aile: str, gider_alir: int = 1, sira: int = 10, aciklama=None) -> int:
     satir = conn.execute("SELECT id FROM kar_merkezi WHERE aile=? AND ad=?", (aile, ad)).fetchone()
     if satir:
         return satir["id"]
     cur = conn.execute(
-        "INSERT INTO kar_merkezi (ad, aile, gider_alir, sira) VALUES (?, ?, ?, ?)", (ad, aile, gider_alir, sira)
+        "INSERT INTO kar_merkezi (ad, aile, gider_alir, sira, aciklama) VALUES (?, ?, ?, ?, ?)",
+        (ad, aile, gider_alir, sira, aciklama),
     )
     return cur.lastrowid

@@ -85,6 +85,13 @@ def test_gelir_eslesme_onerileri(conn, dosyalar):
     assert es[("TSF", "Kiralık")]["ad"] == "Kiralık"
     assert es[("MADEN", "Elektrik")]["tip"] == "ek" and es[("MADEN", "Elektrik")]["gider_alir"] == 0
     assert es[("MADEN", "Yükleme-1 km'ye kadar Taşıma-Depolama")]["tip"] == "poz"
+    # Kısa adlar dosyadaki sırayla: Maden 1, 2, 3 … ; TSF ve RC numaralanır ama toplu merkeze gider
+    assert es[("MADEN", "Delme-Patlatma-Kazı-Yükleme-3.5 km'ye kadar Taşıma -Depolama")]["ad"] == "Maden 1"
+    assert es[("MADEN", "Yükleme-1 km'ye kadar Taşıma-Depolama")]["kisa_ad"] == "Maden 3"
+    assert es[("MADEN", "Delme-Patlatma-Kazı-Yükleme-3.5 km'ye kadar Taşıma -Depolama Ocak Dışı")]["ad"] == "Maden 5"
+    assert es[("TSF", "TSF Faz 2 Dolgu")]["kisa_ad"] == "TSF 2"
+    assert es[("RC", "RC-3 EPİROC D65")]["kisa_ad"] == "RC 2"
+    assert es[("MADEN", "Elektrik")]["kisa_ad"] is None
     assert es[("TSF", "Diğer")]["ad"] == "TSF"
     assert es[("RC", "RC-3 EPİROC D65")]["ad"] == "RC"
     assert es[("TSF", "TSF Faz 2 Dolgu")]["m3_dahil"] == 1
@@ -93,7 +100,7 @@ def test_gelir_eslesme_onerileri(conn, dosyalar):
 def test_uctan_uca_tam_dagitim_ve_uzlasma(conn, dosyalar):
     d = _hepsini_yukle(conn, dosyalar)
     hedef = {ad: i for i, ad in servis.hedefler(conn).items()}
-    poz1 = hedef["Delme-Patlatma-Kazı-Yükleme-3.5 km'ye kadar Taşıma -Depolama"]
+    poz1 = hedef["Maden 1"]
     # Her ekipman yarı Poz1, yarı TSF çalışsın
     for (kod,) in conn.execute("SELECT ekipman_kod FROM mazot WHERE donem_id=?", (d,)).fetchall():
         conn.execute("INSERT INTO calisma_orani VALUES (?, ?, ?, 0.5)", (d, kod, poz1))

@@ -139,3 +139,17 @@ def test_manuel_anahtar_toplami_100_degilse_hata():
     v = veri(manuel_oranlar={"PATLAYICI": {P1: 0.5}})
     s = hesapla(v)
     assert "PATLAYICI" in s.anahtar_hatalari
+
+
+def test_delici_haric_anahtari():
+    from core.engine import ekipman_anahtari
+    v = veri(
+        mazot={"E1": 1, "D1": 1},
+        ekipman_bilgi={"E1": {"company": "Pitworks", "tip": "ESKAVATOR", "birincil": 1},
+                       "D1": {"company": "Pitworks", "tip": "DELICI", "birincil": 1}},
+        oranlar={"E1": {P1: 1.0}, "D1": {P2: 1.0}},
+    )
+    dahil, _ = ekipman_anahtari(v, {"company": ["Pitworks"], "sadece_birincil": True})
+    haric, _ = ekipman_anahtari(v, {"company": ["Pitworks"], "haric_tipler": ["DELICI", "RC"], "sadece_birincil": True})
+    assert dahil == pytest.approx({P1: 0.5, P2: 0.5})
+    assert haric == pytest.approx({P1: 1.0})
